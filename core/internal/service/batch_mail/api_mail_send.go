@@ -342,8 +342,16 @@ func sendApiMailWithSender(ctx context.Context, apiTemplate *entity.ApiTemplates
 	}
 	content = mailTracker.GetHTML()
 
+	// Rewrite self-hosted images to cid: references. File bytes are cached by
+	// RewriteHTMLImages so repeated calls for the same image hit memory only.
+	rewritten, cidImages, err := mail_service.RewriteHTMLImages(content, baseURL, "public/dist")
+	if err == nil {
+		content = rewritten
+	}
+
 	message := mail_service.NewMessage(subject, content)
 	message.SetMessageID(messageId)
+	message.InlineImages = cidImages
 	if apiTemplate.FullName != "" {
 		message.SetRealName(apiTemplate.FullName)
 	}
@@ -436,9 +444,17 @@ func sendApiMail(ctx context.Context, apiTemplate *entity.ApiTemplates, subject 
 	mailTracker.AppendTrackingPixel()
 	content = mailTracker.GetHTML()
 
+	// Rewrite self-hosted images to cid: references. File bytes are cached by
+	// RewriteHTMLImages so repeated calls for the same image hit memory only.
+	rewritten, cidImages, err := mail_service.RewriteHTMLImages(content, baseURL, "public/dist")
+	if err == nil {
+		content = rewritten
+	}
+
 	// create email message
 	message := mail_service.NewMessage(subject, content)
 	message.SetMessageID(messageId)
+	message.InlineImages = cidImages
 
 	// set sender display name
 	if apiTemplate.FullName != "" {

@@ -151,6 +151,10 @@ type TaskExecutor struct {
 
 	spintaxTemplate *SpintaxTemplate
 
+	// cidImages holds inline images extracted from the campaign template once
+	// in processEmailContent and reused for every recipient in the batch.
+	cidImages []mail_service.CIDImage
+
 	// rate controller
 	rateController *SimpleRateController
 
@@ -1063,6 +1067,18 @@ func (e *TaskExecutor) processEmailContent(ctx context.Context, content string, 
 		content = strings.ReplaceAll(content, "__UNSUBSCRIBE_URL__", "{{ UnsubscribeURL . }}")
 	}
 
+	// Rewrite self-hosted <img src="https://…"> to src="cid:…" ONCE per campaign.
+	// The resulting cidImages are stored on the executor and attached to every
+	// outgoing Message, so this disk I/O happens exactly once regardless of
+	// recipient count.  Tracking pixels are added later (per-recipient, after
+	// personalisation) so they are never mistakenly embedded here.
+	baseURL := domains.GetBaseURLBySender(task.Addresser)
+	rewritten, cidImages, err := mail_service.RewriteHTMLImages(content, baseURL, "public/dist")
+	if err == nil {
+		content = rewritten
+		e.cidImages = cidImages
+	}
+
 	// Preparse the spintax template
 	if e.spintaxTemplate == nil {
 		spintaxParser := GetSpintaxParser()
@@ -1225,6 +1241,8 @@ func (e *TaskExecutor) sendEmail(ctx context.Context, task *entity.EmailTask, re
 	// create email message with rendered subject
 	message := mail_service.NewMessage(renderedSubject, renderedContent)
 	message.SetMessageID(messageID)
+	// Attach pre-computed inline images (built once in processEmailContent).
+	message.InlineImages = e.cidImages
 
 	// set sender display name
 	if currentTask.FullName != "" {

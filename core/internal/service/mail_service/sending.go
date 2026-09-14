@@ -22,9 +22,10 @@ import (
 )
 
 type Message struct {
-	Title   string
-	Content string
-	Headers map[string]string
+	Title        string
+	Content      string
+	Headers      map[string]string
+	InlineImages []CIDImage
 }
 
 // MailTitle get title of email
@@ -348,6 +349,66 @@ func (e *EmailSender) Send(message Message, recipients []string) error {
 	return nil
 }
 
+// buildSimpleMessage assembles a flat text/html RFC-2822 message (existing behaviour).
+func buildSimpleMessage(message Message, from string, recipients []string) []byte {
+	s := fmt.Sprintf("From: %s\r\n", from) +
+		fmt.Sprintf("To: %s\r\n", strings.Join(recipients, ",")) +
+		fmt.Sprintf("Subject: %s\r\n", message.MailTitle()) +
+		"MIME-Version: 1.0\r\n" +
+		"Content-Transfer-Encoding: quoted-printable\r\n" +
+		"X-Mailer: BillionMail\r\n" +
+		message.MailHeader() +
+		"\r\n" +
+		message.MailText() +
+		"\r\n"
+	return []byte(s)
+}
+
+// buildMultipartRelated assembles a multipart/related RFC-2822 message.
+// The HTML body is the first (root) part; each CIDImage follows as an
+// inline attachment with a matching Content-ID header.
+func buildMultipartRelated(message Message, from string, recipients []string, boundary string) []byte {
+	var buf bytes.Buffer
+	buf.WriteString(fmt.Sprintf("From: %s\r\n", from))
+	buf.WriteString(fmt.Sprintf("To: %s\r\n", strings.Join(recipients, ",")))
+	buf.WriteString(fmt.Sprintf("Subject: %s\r\n", message.MailTitle()))
+	buf.WriteString("MIME-Version: 1.0\r\n")
+	buf.WriteString("X-Mailer: BillionMail\r\n")
+	buf.WriteString(message.MailHeader()) // includes Content-Type: multipart/related; …
+	buf.WriteString("\r\n")
+
+	// Root part: HTML body
+	buf.WriteString(fmt.Sprintf("--%s\r\n", boundary))
+	buf.WriteString("Content-Type: text/html; charset=utf-8\r\n")
+	buf.WriteString("Content-Transfer-Encoding: quoted-printable\r\n")
+	buf.WriteString("\r\n")
+	buf.WriteString(message.MailText())
+	buf.WriteString("\r\n")
+
+	// Inline image parts
+	for _, img := range message.InlineImages {
+		buf.WriteString(fmt.Sprintf("--%s\r\n", boundary))
+		buf.WriteString(fmt.Sprintf("Content-Type: %s\r\n", img.MimeType))
+		buf.WriteString("Content-Transfer-Encoding: base64\r\n")
+		buf.WriteString(fmt.Sprintf("Content-ID: <%s>\r\n", img.ContentID))
+		buf.WriteString("Content-Disposition: inline\r\n")
+		buf.WriteString("\r\n")
+		// RFC 2045 §6.8: base64 lines must not exceed 76 characters.
+		encoded := base64.StdEncoding.EncodeToString(img.Data)
+		for i := 0; i < len(encoded); i += 76 {
+			end := i + 76
+			if end > len(encoded) {
+				end = len(encoded)
+			}
+			buf.WriteString(encoded[i:end])
+			buf.WriteString("\r\n")
+		}
+	}
+
+	buf.WriteString(fmt.Sprintf("--%s--\r\n", boundary))
+	return buf.Bytes()
+}
+
 // doSend performs the actual message sending
 func (e *EmailSender) doSend(message Message, recipients []string) error {
 	// Add default headers if not present
@@ -365,11 +426,6 @@ func (e *EmailSender) doSend(message Message, recipients []string) error {
 		message.Headers["Date"] = time.Now().Format(time.RFC1123Z)
 	}
 
-	// Default Content-Type if not already set
-	if _, exists := message.Headers["Content-Type"]; !exists {
-		message.Headers["Content-Type"] = "text/html; charset=utf-8"
-	}
-
 	// Default From header
 	from := fmt.Sprintf("%s <%s>", strings.Split(e.Email, "@")[0], e.Email)
 
@@ -383,19 +439,20 @@ func (e *EmailSender) doSend(message Message, recipients []string) error {
 		delete(message.Headers, "From")
 	}
 
-	// Build email message with headers
-	headerString := fmt.Sprintf("From: %s\r\n", from) +
-		fmt.Sprintf("To: %s\r\n", strings.Join(recipients, ",")) +
-		fmt.Sprintf("Subject: %s\r\n", message.MailTitle()) +
-		"MIME-Version: 1.0\r\n" +
-		"Content-Transfer-Encoding: quoted-printable\r\n" +
-		"X-Mailer: BillionMail\r\n" +
-		message.MailHeader() +
-		"\r\n" +
-		message.MailText() +
-		"\r\n"
-
-	msg := []byte(headerString)
+	var msg []byte
+	if len(message.InlineImages) > 0 {
+		// Build multipart/related to carry inline CID images.
+		boundary := hex.EncodeToString(grand.B(14))
+		message.Headers["Content-Type"] = fmt.Sprintf(
+			`multipart/related; type="text/html"; boundary="%s"`, boundary)
+		msg = buildMultipartRelated(message, from, recipients, boundary)
+	} else {
+		// Simple single-part text/html (original behaviour).
+		if _, exists := message.Headers["Content-Type"]; !exists {
+			message.Headers["Content-Type"] = "text/html; charset=utf-8"
+		}
+		msg = buildSimpleMessage(message, from, recipients)
+	}
 
 	var err error
 

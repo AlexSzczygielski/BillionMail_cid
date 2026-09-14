@@ -56,15 +56,20 @@ When you send a campaign or transactional email, the pipeline checks every `<img
 The image file needs to be physically present on the server inside `public/dist/` (the directory GoFrame uses as its static file root). Drop it in via SCP, a Docker volume, or your deploy process:
 
 ```bash
-# example — copy a logo into the running container
-docker cp logo.png billionmail-core:/app/public/dist/logo.png
+# 1. SCP the file to your server
+scp logo.png user@your-server:/tmp/logo.png
+
+# 2. Copy it into the running container
+docker cp /tmp/logo.png <your-compose-project>-core-billionmail-1:/opt/billionmail/core/public/dist/logo.png
 ```
 
-Or mount a directory in `docker-compose.yml`:
+Not sure of your container name? Run `docker ps | grep core` to find it.
+
+Or mount a directory in `docker-compose.yml` so files persist across rebuilds:
 
 ```yaml
 volumes:
-  - ./my-images:/app/public/dist/uploads
+  - ./core-images:/opt/billionmail/core/public/dist/uploads
 ```
 
 ### Step 2 — Reference it in the email editor

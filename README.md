@@ -70,23 +70,18 @@ When you send a campaign or transactional email, the pipeline checks every `<img
 
 ### Step 1 — Put your image on the server
 
-The image file needs to be physically present on the server inside `public/dist/` (the directory GoFrame uses as its static file root). Drop it in via SCP, a Docker volume, or your deploy process:
-
-```bash
-# 1. SCP the file to your server
-scp logo.png user@your-server:/tmp/logo.png
-
-# 2. Copy it into the running container
-docker cp /tmp/logo.png <your-compose-project>-core-billionmail-1:/opt/billionmail/core/public/dist/logo.png
-```
-
-Not sure of your container name? Run `docker ps | grep core` to find it.
-
-Or mount a directory in `docker-compose.yml` so files persist across rebuilds:
+Mount a host directory into the container so images persist across rebuilds. In your `docker-compose.yml`, add this volume to the `core-billionmail` service:
 
 ```yaml
 volumes:
   - ./core-images:/opt/billionmail/core/public/dist/uploads
+```
+
+Create the directory and drop your image in:
+
+```bash
+mkdir -p ./core-images
+cp logo.png ./core-images/logo.png
 ```
 
 ### Step 2 — Reference it in the email editor
@@ -94,9 +89,7 @@ volumes:
 In the BillionMail email editor, add an image block and paste the full URL pointing at your instance:
 
 ```
-https://mail.yourdomain.com/logo.png
-# or if you used a subdirectory:
-https://mail.yourdomain.com/uploads/banner.png
+https://mail.yourdomain.com/uploads/logo.png
 ```
 
 That's it. Save the template and send. The URL stays as-is in the editor preview (your browser loads it normally over HTTP), but at send time the pipeline replaces it with a `cid:` reference and attaches the bytes inline.

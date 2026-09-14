@@ -1078,7 +1078,9 @@ func (e *TaskExecutor) processEmailContent(ctx context.Context, content string, 
 			baseURL = "https://" + hostname
 		}
 	}
+	g.Log().Warningf(context.Background(), "[CID] baseURL=%q sender=%q", baseURL, task.Addresser)
 	rewritten, cidImages, err := mail_service.RewriteHTMLImages(content, baseURL, "public/dist")
+	g.Log().Warningf(context.Background(), "[CID] cidImages=%d err=%v", len(cidImages), err)
 	if err == nil {
 		content = rewritten
 		e.cidImages = cidImages

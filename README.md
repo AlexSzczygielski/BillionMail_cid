@@ -29,14 +29,31 @@ One feature addition on top of the official BillionMail codebase:
 
 ## Install
 
-Same as stock BillionMail — just use the files from this repo.
-
 **Prerequisites:** Docker + Docker Compose on your server.
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/BillionMail_cid.git
+git clone https://github.com/AlexSzczygielski/BillionMail_cid.git
 cd BillionMail_cid
 cp .env.example .env   # edit as required
+```
+
+### Build the core image
+
+This fork ships a build script that compiles the Go binary inside a throwaway Alpine container — no Go installation required on the host:
+
+```bash
+# x86 (default)
+./build-core.sh 4.9.3 x86
+
+# ARM
+./build-core.sh 4.9.3 arm
+```
+
+This produces a local Docker image tagged `billionmail-core-cid:4.9.3`. Your `docker-compose.yml` should reference that image name for the core service.
+
+### Start everything
+
+```bash
 docker compose up -d
 ```
 

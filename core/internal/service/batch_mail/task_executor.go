@@ -1073,9 +1073,12 @@ func (e *TaskExecutor) processEmailContent(ctx context.Context, content string, 
 	// recipient count.  Tracking pixels are added later (per-recipient, after
 	// personalisation) so they are never mistakenly embedded here.
 	baseURL := domains.GetBaseURLBySender(task.Addresser)
-	g.Log().Warningf(context.Background(), "[CID] baseURL=%q sender=%q", baseURL, task.Addresser)
+	if baseURL == "" {
+		if hostname, herr := public.DockerEnv("BILLIONMAIL_HOSTNAME"); herr == nil && hostname != "" && hostname != "mail.example.com" {
+			baseURL = "https://" + hostname
+		}
+	}
 	rewritten, cidImages, err := mail_service.RewriteHTMLImages(content, baseURL, "public/dist")
-	g.Log().Warningf(context.Background(), "[CID] rewrite done: cidImages=%d err=%v", len(cidImages), err)
 	if err == nil {
 		content = rewritten
 		e.cidImages = cidImages

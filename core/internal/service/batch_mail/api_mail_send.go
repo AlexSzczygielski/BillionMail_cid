@@ -332,6 +332,11 @@ func sendApiMailWithSender(ctx context.Context, apiTemplate *entity.ApiTemplates
 	// generate message ID
 	messageId := "<" + log.MessageId + ">"
 	baseURL := domains.GetBaseURLBySender(log.Addresser)
+	if baseURL == "" {
+		if hostname, herr := public.DockerEnv("BILLIONMAIL_HOSTNAME"); herr == nil && hostname != "" && hostname != "mail.example.com" {
+			baseURL = "https://" + hostname
+		}
+	}
 	apiTemplate_id := apiTemplate.Id + 1000000000
 	mailTracker := maillog_stat.NewMailTracker(content, apiTemplate_id, messageId, log.Recipient, baseURL)
 	if apiTemplate.TrackOpen == 1 {
@@ -438,6 +443,11 @@ func sendApiMail(ctx context.Context, apiTemplate *entity.ApiTemplates, subject 
 
 	// add 1 billion to prevent conflict with marketing task id
 	baseURL := domains.GetBaseURLBySender(log.Addresser)
+	if baseURL == "" {
+		if hostname, herr := public.DockerEnv("BILLIONMAIL_HOSTNAME"); herr == nil && hostname != "" && hostname != "mail.example.com" {
+			baseURL = "https://" + hostname
+		}
+	}
 	apiTemplate_id := apiTemplate.Id + 1000000000
 	mailTracker := maillog_stat.NewMailTracker(content, apiTemplate_id, messageId, log.Recipient, baseURL)
 	mailTracker.TrackLinks()
